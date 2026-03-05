@@ -1,0 +1,18 @@
+# Acceptable complexity for middleware that maps many error types
+Metrics/AbcSize:
+  Exclude:
+    - 'lib/claude_agent_server/middleware/error_handler.rb'
+
+# MessageSerializer must handle all SDK message types in one case statement
+Metrics/ModuleLength:
+  Exclude:
+    - 'lib/claude_agent_server/services/message_serializer.rb'
+
+Metrics/CyclomaticComplexity:
+  Exclude:
+    - 'lib/claude_agent_server/services/message_serializer.rb'
+
+# CLI option parser block is naturally long
+Metrics/BlockLength:
+  Exclude:
+    - 'exe/*'

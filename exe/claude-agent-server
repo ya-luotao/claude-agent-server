@@ -1,0 +1,71 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'optparse'
+
+options = {}
+
+OptionParser.new do |opts|
+  opts.banner = 'Usage: claude-agent-server [options]'
+
+  opts.on('-p', '--port PORT', Integer, 'Port to listen on (default: 9292)') do |p|
+    options[:port] = p
+  end
+
+  opts.on('-b', '--bind HOST', 'Host to bind to (default: 0.0.0.0)') do |h|
+    options[:host] = h
+  end
+
+  opts.on('-t', '--token TOKEN', 'Authentication token') do |t|
+    options[:auth_token] = t
+  end
+
+  opts.on('--session-ttl SECONDS', Integer, 'Session TTL in seconds (default: 3600)') do |ttl|
+    options[:session_ttl] = ttl
+  end
+
+  opts.on('--max-sessions N', Integer, 'Maximum concurrent sessions (default: 100)') do |n|
+    options[:max_sessions] = n
+  end
+
+  opts.on('--cors-origins ORIGINS', 'Comma-separated CORS origins (default: *)') do |origins|
+    options[:cors_origins] = origins
+  end
+
+  opts.on('-v', '--version', 'Show version') do
+    require_relative '../lib/claude_agent_server/version'
+    puts "claude-agent-server #{ClaudeAgentServer::VERSION}"
+    exit
+  end
+
+  opts.on('-h', '--help', 'Show help') do
+    puts opts
+    exit
+  end
+end.parse!
+
+require_relative '../lib/claude_agent_server'
+
+ClaudeAgentServer.configure do |config|
+  config.port = options[:port] if options[:port]
+  config.host = options[:host] if options[:host]
+  config.auth_token = options[:auth_token] if options[:auth_token]
+  config.session_ttl = options[:session_ttl] if options[:session_ttl]
+  config.max_sessions = options[:max_sessions] if options[:max_sessions]
+  config.cors_origins = options[:cors_origins] if options[:cors_origins]
+end
+
+config = ClaudeAgentServer.config
+
+puts "Starting claude-agent-server v#{ClaudeAgentServer::VERSION}"
+puts "Listening on http://#{config.host}:#{config.port}"
+puts "Auth: #{config.auth_enabled? ? 'enabled' : 'disabled'}"
+puts "Max sessions: #{config.max_sessions}, TTL: #{config.session_ttl}s"
+
+# Use array form to avoid shell injection
+Kernel.exec(
+  'falcon', 'serve',
+  '--bind', "http://#{config.host}:#{config.port}",
+  '--count', '1',
+  '--config', File.expand_path('../../config.ru', __dir__)
+)
