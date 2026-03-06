@@ -4,8 +4,8 @@ source 'https://rubygems.org'
 
 gemspec
 
-# Use local SDK during development
-gem 'claude-agent-sdk', path: '../claude-agent-sdk-ruby'
+# Use local SDK during development (skip in CI)
+gem 'claude-agent-sdk', path: '../claude-agent-sdk-ruby' unless ENV['CI']
 
 group :development, :test do
   gem 'bundler', '~> 2.0'
