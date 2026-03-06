@@ -56,7 +56,7 @@ module TestHelpers
       created_at: Time.now,
       last_activity: Time.now,
       message_count: message_count,
-      messages: []
+      events: []
     )
     allow(entry).to receive(:last_activity=)
     entry

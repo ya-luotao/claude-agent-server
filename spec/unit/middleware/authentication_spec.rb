@@ -25,31 +25,39 @@ RSpec.describe ClaudeAgentServer::Middleware::Authentication do
       expect(status).to eq(200)
     end
 
+    it 'allows /v1/health without auth' do
+      env = Rack::MockRequest.env_for('/v1/health')
+      status, = middleware.call(env)
+
+      expect(status).to eq(200)
+    end
+
     it 'rejects requests without token' do
-      env = Rack::MockRequest.env_for('/sessions')
-      status, _, body = middleware.call(env)
+      env = Rack::MockRequest.env_for('/v1/sessions')
+      status, headers, body = middleware.call(env)
 
       expect(status).to eq(401)
+      expect(headers['content-type']).to eq('application/problem+json')
       parsed = JSON.parse(body.first)
-      expect(parsed['error']['code']).to eq('unauthorized')
+      expect(parsed['type']).to include('unauthorized')
     end
 
     it 'rejects requests with wrong token' do
-      env = Rack::MockRequest.env_for('/sessions', 'HTTP_AUTHORIZATION' => 'Bearer wrong-token')
+      env = Rack::MockRequest.env_for('/v1/sessions', 'HTTP_AUTHORIZATION' => 'Bearer wrong-token')
       status, = middleware.call(env)
 
       expect(status).to eq(401)
     end
 
     it 'allows requests with correct token' do
-      env = Rack::MockRequest.env_for('/sessions', 'HTTP_AUTHORIZATION' => 'Bearer secret-token')
+      env = Rack::MockRequest.env_for('/v1/sessions', 'HTTP_AUTHORIZATION' => 'Bearer secret-token')
       status, = middleware.call(env)
 
       expect(status).to eq(200)
     end
 
     it 'handles case-insensitive Bearer prefix' do
-      env = Rack::MockRequest.env_for('/sessions', 'HTTP_AUTHORIZATION' => 'bearer secret-token')
+      env = Rack::MockRequest.env_for('/v1/sessions', 'HTTP_AUTHORIZATION' => 'bearer secret-token')
       status, = middleware.call(env)
 
       expect(status).to eq(200)

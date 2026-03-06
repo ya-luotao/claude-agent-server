@@ -7,8 +7,19 @@ require 'async/queue'
 
 module ClaudeAgentServer
   module Services
+    # An indexed event wrapping an SDK message with a monotonic index
+    class SessionEvent
+      attr_reader :index, :message, :timestamp
+
+      def initialize(index:, message:)
+        @index = index
+        @message = message
+        @timestamp = Time.now
+      end
+    end
+
     class SessionEntry
-      attr_reader :id, :client, :created_at, :status, :messages
+      attr_reader :id, :client, :created_at, :status, :events
       attr_accessor :last_activity
 
       def initialize(id:, client:)
@@ -17,26 +28,40 @@ module ClaudeAgentServer
         @created_at = Time.now
         @last_activity = Time.now
         @status = :connected
-        @messages = []
+        @events = []
+        @next_index = 0
         @subscribers = []
         @mutex = Mutex.new
         @reader_task = nil
       end
 
       def message_count
-        @messages.size
+        @events.size
       end
 
-      def subscribe(&block)
+      # Retrieve events by offset and limit (for polling)
+      def get_events(offset: 0, limit: nil)
+        @mutex.synchronize do
+          slice = @events[offset..] || []
+          limit ? slice.first(limit) : slice
+        end
+      end
+
+      def subscribe(offset: 0, &block)
         queue = Async::Queue.new
-        @mutex.synchronize { @subscribers << queue }
+
+        # Replay missed events from offset
+        @mutex.synchronize do
+          @subscribers << queue
+          @events[offset..]&.each { |evt| queue.enqueue(evt) }
+        end
 
         begin
           loop do
-            message = queue.dequeue
-            break if message == :done
+            event = queue.dequeue
+            break if event == :done
 
-            block.call(message)
+            block.call(event)
           end
         ensure
           @mutex.synchronize { @subscribers.delete(queue) }
@@ -45,9 +70,11 @@ module ClaudeAgentServer
 
       def broadcast(message)
         @mutex.synchronize do
-          @messages << message
+          event = SessionEvent.new(index: @next_index, message: message)
+          @next_index += 1
+          @events << event
           @last_activity = Time.now
-          @subscribers.each { |q| q.enqueue(message) }
+          @subscribers.each { |q| q.enqueue(event) }
         end
       end
 
@@ -93,16 +120,18 @@ module ClaudeAgentServer
         @reaper_task = nil
       end
 
-      def create_session(options:, prompt: nil)
+      def create_session(options:, prompt: nil, id: nil)
         config = ClaudeAgentServer.config
+        id ||= SecureRandom.uuid
 
         @mutex.synchronize do
+          raise SessionAlreadyExistsError, "Session '#{id}' already exists" if @sessions.key?(id)
+
           if @sessions.size >= config.max_sessions
             raise SessionLimitError, "Maximum session limit (#{config.max_sessions}) reached"
           end
         end
 
-        id = SecureRandom.uuid
         client = ClaudeAgentSDK::Client.new(options: options)
         client.connect(prompt)
 

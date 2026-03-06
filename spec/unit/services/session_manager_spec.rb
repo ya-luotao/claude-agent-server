@@ -14,13 +14,26 @@ RSpec.describe ClaudeAgentServer::Services::SessionManager do
   end
 
   describe '#create_session' do
-    it 'creates a new session' do
+    it 'creates a new session with generated ID' do
       entry = manager.create_session(options: mock_options)
 
       expect(entry).to be_a(ClaudeAgentServer::Services::SessionEntry)
       expect(entry.id).to match(/\A[0-9a-f-]{36}\z/)
-      # Status may be :connected or :finished (mock reader completes immediately)
       expect(%i[connected finished]).to include(entry.status)
+    end
+
+    it 'creates a session with client-provided ID' do
+      entry = manager.create_session(options: mock_options, id: 'my-session')
+
+      expect(entry.id).to eq('my-session')
+    end
+
+    it 'rejects duplicate session IDs' do
+      manager.create_session(options: mock_options, id: 'dup')
+
+      expect { manager.create_session(options: mock_options, id: 'dup') }.to raise_error(
+        ClaudeAgentServer::SessionAlreadyExistsError
+      )
     end
 
     it 'connects the client' do
@@ -120,13 +133,51 @@ RSpec.describe ClaudeAgentServer::Services::SessionEntry do
   end
 
   describe '#broadcast' do
-    it 'stores message and updates last_activity' do
+    it 'stores event with monotonic index' do
+      entry.broadcast('msg-1')
+      entry.broadcast('msg-2')
+
+      expect(entry.message_count).to eq(2)
+      expect(entry.events[0].index).to eq(0)
+      expect(entry.events[1].index).to eq(1)
+      expect(entry.events[0].message).to eq('msg-1')
+    end
+
+    it 'updates last_activity' do
       original_time = entry.last_activity
       sleep(0.01)
       entry.broadcast('test-message')
 
-      expect(entry.message_count).to eq(1)
       expect(entry.last_activity).to be > original_time
+    end
+  end
+
+  describe '#get_events' do
+    before do
+      entry.broadcast('a')
+      entry.broadcast('b')
+      entry.broadcast('c')
+    end
+
+    it 'returns all events from offset' do
+      events = entry.get_events(offset: 1)
+
+      expect(events.size).to eq(2)
+      expect(events[0].message).to eq('b')
+      expect(events[1].message).to eq('c')
+    end
+
+    it 'respects limit' do
+      events = entry.get_events(offset: 0, limit: 2)
+
+      expect(events.size).to eq(2)
+      expect(events[1].message).to eq('b')
+    end
+
+    it 'returns empty for offset beyond events' do
+      events = entry.get_events(offset: 10)
+
+      expect(events).to eq([])
     end
   end
 
@@ -137,5 +188,15 @@ RSpec.describe ClaudeAgentServer::Services::SessionEntry do
 
       expect(entry.status).to eq(:disconnected)
     end
+  end
+end
+
+RSpec.describe ClaudeAgentServer::Services::SessionEvent do
+  it 'stores index, message, and timestamp' do
+    event = described_class.new(index: 5, message: 'hello')
+
+    expect(event.index).to eq(5)
+    expect(event.message).to eq('hello')
+    expect(event.timestamp).to be_a(Time)
   end
 end

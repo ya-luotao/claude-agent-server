@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Query routes', type: :request do
-  describe 'POST /query' do
+  describe 'POST /v1/query' do
     it 'returns 400 when prompt is missing' do
-      post_json '/query', {}
+      post_json '/v1/query', {}
 
       expect(last_response.status).to eq(400)
-      expect(json_response[:error][:code]).to eq('bad_request')
+      parsed = JSON.parse(last_response.body)
+      expect(parsed['type']).to include('invalid_request')
     end
 
     it 'executes a query and returns messages' do
@@ -17,7 +18,7 @@ RSpec.describe 'Query routes', type: :request do
 
       allow(ClaudeAgentServer::Services::QueryExecutor).to receive(:execute).and_return(messages)
 
-      post_json '/query', { prompt: 'say hi' }
+      post_json '/v1/query', { prompt: 'say hi' }
 
       expect(last_response.status).to eq(200)
       expect(json_response[:messages]).to be_an(Array)
@@ -31,13 +32,13 @@ RSpec.describe 'Query routes', type: :request do
         hash_including('model' => 'claude-sonnet-4-20250514')
       ).and_call_original
 
-      post_json '/query', { prompt: 'hi', options: { 'model' => 'claude-sonnet-4-20250514' } }
+      post_json '/v1/query', { prompt: 'hi', options: { 'model' => 'claude-sonnet-4-20250514' } }
     end
   end
 
-  describe 'POST /query/stream' do
+  describe 'POST /v1/query/stream' do
     it 'returns 400 when prompt is missing' do
-      post_json '/query/stream', {}
+      post_json '/v1/query/stream', {}
 
       expect(last_response.status).to eq(400)
     end
@@ -46,7 +47,7 @@ RSpec.describe 'Query routes', type: :request do
       stream_body = ClaudeAgentServer::Services::SseStream::StreamBody.new { |_s| nil }
       allow(ClaudeAgentServer::Services::SseStream).to receive(:stream_query).and_return(stream_body)
 
-      post_json '/query/stream', { prompt: 'say hi' }
+      post_json '/v1/query/stream', { prompt: 'say hi' }
 
       expect(last_response.status).to eq(200)
       expect(last_response.headers['content-type']).to include('text/event-stream')

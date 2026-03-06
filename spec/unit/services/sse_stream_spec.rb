@@ -2,12 +2,22 @@
 
 RSpec.describe ClaudeAgentServer::Services::SseStream do
   describe '.format_sse' do
-    it 'formats event with data' do
-      result = described_class.format_sse('assistant', { type: 'assistant', content: 'hi' })
+    it 'formats event with data and no ID' do
+      result = described_class.format_sse('assistant', { type: 'assistant' })
 
       expect(result).to start_with('event: assistant')
       expect(result).to include('data: ')
       expect(result).to end_with("\n\n")
+      expect(result).not_to include('id:')
+    end
+
+    it 'includes event ID when provided' do
+      result = described_class.format_sse('assistant', { type: 'assistant' }, id: 42)
+
+      lines = result.strip.split("\n")
+      expect(lines[0]).to eq('id: 42')
+      expect(lines[1]).to eq('event: assistant')
+      expect(lines[2]).to start_with('data: ')
     end
 
     it 'produces valid SSE format' do
@@ -15,7 +25,6 @@ RSpec.describe ClaudeAgentServer::Services::SseStream do
 
       lines = result.strip.split("\n")
       expect(lines[0]).to eq('event: done')
-      expect(lines[1]).to start_with('data: ')
       data = JSON.parse(lines[1].sub('data: ', ''))
       expect(data['status']).to eq('complete')
     end

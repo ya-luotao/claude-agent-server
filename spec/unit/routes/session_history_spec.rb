@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 RSpec.describe 'Session history routes', type: :request do
-  describe 'GET /cli-sessions' do
+  describe 'GET /v1/cli-sessions' do
     it 'returns sessions list' do
       allow(ClaudeAgentSDK).to receive(:list_sessions).and_return([])
 
-      get '/cli-sessions'
+      get '/v1/cli-sessions'
 
       expect(last_response.status).to eq(200)
       expect(json_response[:sessions]).to eq([])
@@ -18,7 +18,7 @@ RSpec.describe 'Session history routes', type: :request do
         include_worktrees: true
       ).and_return([])
 
-      get '/cli-sessions?directory=/tmp&limit=10'
+      get '/v1/cli-sessions?directory=/tmp&limit=10'
     end
 
     it 'handles includeWorktrees=false' do
@@ -26,7 +26,7 @@ RSpec.describe 'Session history routes', type: :request do
         hash_including(include_worktrees: false)
       ).and_return([])
 
-      get '/cli-sessions?includeWorktrees=false'
+      get '/v1/cli-sessions?includeWorktrees=false'
     end
 
     it 'serializes session info' do
@@ -42,7 +42,7 @@ RSpec.describe 'Session history routes', type: :request do
       )
       allow(ClaudeAgentSDK).to receive(:list_sessions).and_return([session])
 
-      get '/cli-sessions'
+      get '/v1/cli-sessions'
 
       result = json_response[:sessions].first
       expect(result[:sessionId]).to eq('abc-123')
@@ -51,11 +51,11 @@ RSpec.describe 'Session history routes', type: :request do
     end
   end
 
-  describe 'GET /cli-sessions/:id/messages' do
+  describe 'GET /v1/cli-sessions/:id/messages' do
     it 'returns session messages' do
       allow(ClaudeAgentSDK).to receive(:get_session_messages).and_return([])
 
-      get '/cli-sessions/abc-123/messages'
+      get '/v1/cli-sessions/abc-123/messages'
 
       expect(last_response.status).to eq(200)
       expect(json_response[:sessionId]).to eq('abc-123')
@@ -70,7 +70,7 @@ RSpec.describe 'Session history routes', type: :request do
         offset: 10
       ).and_return([])
 
-      get '/cli-sessions/abc-123/messages?limit=50&offset=10'
+      get '/v1/cli-sessions/abc-123/messages?limit=50&offset=10'
     end
 
     it 'serializes messages' do
@@ -82,7 +82,7 @@ RSpec.describe 'Session history routes', type: :request do
       )
       allow(ClaudeAgentSDK).to receive(:get_session_messages).and_return([msg])
 
-      get '/cli-sessions/abc-123/messages'
+      get '/v1/cli-sessions/abc-123/messages'
 
       result = json_response[:messages].first
       expect(result[:type]).to eq('user')

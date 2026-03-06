@@ -6,7 +6,7 @@ require 'openssl'
 module ClaudeAgentServer
   module Middleware
     class Authentication
-      SKIP_PATHS = %w[/health].freeze
+      SKIP_PATHS = %w[/health /v1/health].freeze
 
       def initialize(app)
         @app = app
@@ -44,8 +44,13 @@ module ClaudeAgentServer
       end
 
       def unauthorized_response
-        body = JSON.generate({ error: { code: 'unauthorized', message: 'Invalid or missing authentication token' } })
-        [401, { 'content-type' => 'application/json' }, [body]]
+        body = JSON.generate({
+                               type: "#{URN_PREFIX}:unauthorized",
+                               title: 'Unauthorized',
+                               status: 401,
+                               detail: 'Invalid or missing authentication token'
+                             })
+        [401, { 'content-type' => 'application/problem+json' }, [body]]
       end
     end
   end

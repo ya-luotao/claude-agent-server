@@ -6,13 +6,31 @@ RSpec.describe ClaudeAgentServer::Middleware::ErrorHandler do
     described_class.new(inner)
   end
 
-  it 'maps SessionNotFoundError to 404' do
+  def parse_problem(body)
+    JSON.parse(body.first)
+  end
+
+  it 'maps SessionNotFoundError to 404 with RFC 9457 format' do
     app = build_app(ClaudeAgentServer::SessionNotFoundError.new('not found'))
-    status, _, body = app.call(Rack::MockRequest.env_for('/'))
+    status, headers, body = app.call(Rack::MockRequest.env_for('/'))
 
     expect(status).to eq(404)
-    parsed = JSON.parse(body.first)
-    expect(parsed['error']['code']).to eq('session_not_found')
+    expect(headers['content-type']).to eq('application/problem+json')
+
+    problem = parse_problem(body)
+    expect(problem['type']).to eq('urn:claude-agent-server:error:session_not_found')
+    expect(problem['title']).to eq('Session Not Found')
+    expect(problem['status']).to eq(404)
+    expect(problem['detail']).to eq('not found')
+  end
+
+  it 'maps SessionAlreadyExistsError to 409' do
+    app = build_app(ClaudeAgentServer::SessionAlreadyExistsError.new('exists'))
+    status, _, body = app.call(Rack::MockRequest.env_for('/'))
+
+    expect(status).to eq(409)
+    problem = parse_problem(body)
+    expect(problem['type']).to include('session_already_exists')
   end
 
   it 'maps SessionLimitError to 429' do
@@ -31,9 +49,11 @@ RSpec.describe ClaudeAgentServer::Middleware::ErrorHandler do
 
   it 'maps ArgumentError to 400' do
     app = build_app(ArgumentError.new('bad input'))
-    status, = app.call(Rack::MockRequest.env_for('/'))
+    status, _, body = app.call(Rack::MockRequest.env_for('/'))
 
     expect(status).to eq(400)
+    problem = parse_problem(body)
+    expect(problem['type']).to include('invalid_request')
   end
 
   it 'maps CLINotFoundError to 503' do

@@ -3,7 +3,7 @@
 RSpec.describe 'Full lifecycle', :integration, type: :request do
   describe 'query lifecycle' do
     it 'executes a one-shot query' do
-      post_json '/query', { prompt: 'Say exactly: hello world' }
+      post_json '/v1/query', { prompt: 'Say exactly: hello world' }
 
       expect(last_response.status).to eq(200)
       messages = json_response[:messages]
@@ -13,30 +13,36 @@ RSpec.describe 'Full lifecycle', :integration, type: :request do
   end
 
   describe 'session lifecycle' do
-    it 'creates, messages, and destroys a session' do
-      # Create session
-      post_json '/sessions', { prompt: 'Say exactly: hi' }
+    it 'creates, messages, polls events, and destroys a session' do
+      # Create session with client-provided ID
+      post_json '/v1/sessions', { id: 'test-lifecycle', prompt: 'Say exactly: hi' }
       expect(last_response.status).to eq(201)
-      session_id = json_response[:id]
+      expect(json_response[:id]).to eq('test-lifecycle')
 
       # Get session info
-      get "/sessions/#{session_id}"
+      get '/v1/sessions/test-lifecycle'
       expect(last_response.status).to eq(200)
 
       # Wait briefly for response
       sleep(5)
 
+      # Poll events with offset
+      get '/v1/sessions/test-lifecycle/events?offset=0'
+      expect(last_response.status).to eq(200)
+      expect(json_response[:events].size).to be >= 1
+      expect(json_response[:nextOffset]).to be > 0
+
       # Get history
-      get "/sessions/#{session_id}/history"
+      get '/v1/sessions/test-lifecycle/history'
       expect(last_response.status).to eq(200)
       expect(json_response[:messages].size).to be >= 1
 
       # Destroy session
-      delete "/sessions/#{session_id}"
+      delete '/v1/sessions/test-lifecycle'
       expect(last_response.status).to eq(200)
 
       # Verify session is gone
-      get "/sessions/#{session_id}"
+      get '/v1/sessions/test-lifecycle'
       expect(last_response.status).to eq(404)
     end
   end

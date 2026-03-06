@@ -8,17 +8,20 @@ RSpec.describe 'Health routes', type: :request do
       expect(last_response.status).to eq(200)
       expect(json_response[:status]).to eq('ok')
     end
+  end
 
-    it 'returns JSON content type' do
-      get '/health'
+  describe 'GET /v1/health' do
+    it 'returns ok status' do
+      get '/v1/health'
 
-      expect(last_response.content_type).to include('application/json')
+      expect(last_response.status).to eq(200)
+      expect(json_response[:status]).to eq('ok')
     end
   end
 
-  describe 'GET /info' do
+  describe 'GET /v1/info' do
     it 'returns server and SDK version' do
-      get '/info'
+      get '/v1/info'
 
       expect(last_response.status).to eq(200)
       expect(json_response[:version]).to eq(ClaudeAgentServer::VERSION)

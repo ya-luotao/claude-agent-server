@@ -8,11 +8,13 @@ module ClaudeAgentServer
       module_function
 
       def stream_query(prompt:, options:)
+        index = 0
         StreamBody.new do |stream|
           QueryExecutor.stream(prompt: prompt, options: options) do |message|
             serialized = MessageSerializer.serialize(message)
             event_type = serialized[:type] || 'message'
-            stream.write(format_sse(event_type, serialized))
+            stream.write(format_sse(event_type, serialized, id: index))
+            index += 1
           end
           stream.write(format_sse('done', { status: 'complete' }))
         rescue IOError, Errno::EPIPE
@@ -20,12 +22,14 @@ module ClaudeAgentServer
         end
       end
 
-      def stream_session(session_entry)
+      def stream_session(session_entry, last_event_id: nil)
+        offset = last_event_id ? last_event_id.to_i + 1 : 0
+
         StreamBody.new do |stream|
-          session_entry.subscribe do |message|
-            serialized = MessageSerializer.serialize(message)
+          session_entry.subscribe(offset: offset) do |event|
+            serialized = MessageSerializer.serialize(event.message)
             event_type = serialized[:type] || 'message'
-            stream.write(format_sse(event_type, serialized))
+            stream.write(format_sse(event_type, serialized, id: event.index))
           end
           stream.write(format_sse('done', { status: 'complete' }))
         rescue IOError, Errno::EPIPE
@@ -33,8 +37,12 @@ module ClaudeAgentServer
         end
       end
 
-      def format_sse(event, data)
-        "event: #{event}\ndata: #{JSON.generate(data)}\n\n"
+      def format_sse(event, data, id: nil)
+        parts = []
+        parts << "id: #{id}" unless id.nil?
+        parts << "event: #{event}"
+        parts << "data: #{JSON.generate(data)}"
+        "#{parts.join("\n")}\n\n"
       end
 
       # Rack 3 streaming body that yields chunks via a fiber

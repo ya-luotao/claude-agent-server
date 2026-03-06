@@ -11,35 +11,35 @@ module ClaudeAgentServer
 
       def call(env)
         @app.call(env)
-      rescue SessionNotFoundError => e
-        error_response(404, 'session_not_found', e.message)
-      rescue SessionLimitError => e
-        error_response(429, 'session_limit_reached', e.message)
-      rescue AuthenticationError => e
-        error_response(401, 'unauthorized', e.message)
-      rescue ConfigError => e
-        error_response(400, 'config_error', e.message)
-      rescue ClaudeAgentSDK::CLINotFoundError => e
-        error_response(503, 'cli_not_found', e.message)
-      rescue ClaudeAgentSDK::CLIConnectionError => e
-        error_response(502, 'cli_connection_error', e.message)
-      rescue ClaudeAgentSDK::ProcessError => e
-        error_response(502, 'cli_process_error', e.message)
-      rescue ClaudeAgentSDK::ClaudeSDKError => e
-        error_response(502, 'sdk_error', e.message)
-      rescue ArgumentError => e
-        error_response(400, 'bad_request', e.message)
       rescue ServerError => e
-        error_response(500, 'server_error', e.message)
+        problem_response(e.status_code, e.to_problem_details)
+      rescue ClaudeAgentSDK::CLINotFoundError => e
+        problem_response(503, problem(503, 'cli_not_found', 'CLI Not Found', e.message))
+      rescue ClaudeAgentSDK::CLIConnectionError => e
+        problem_response(502, problem(502, 'cli_connection_error', 'CLI Connection Error', e.message))
+      rescue ClaudeAgentSDK::ProcessError => e
+        problem_response(502, problem(502, 'cli_process_error', 'CLI Process Error', e.message))
+      rescue ClaudeAgentSDK::ClaudeSDKError => e
+        problem_response(502, problem(502, 'sdk_error', 'SDK Error', e.message))
+      rescue ArgumentError => e
+        problem_response(400, problem(400, 'invalid_request', 'Invalid Request', e.message))
       rescue StandardError => e
-        error_response(500, 'internal_error', e.message)
+        problem_response(500, problem(500, 'internal_error', 'Internal Error', e.message))
       end
 
       private
 
-      def error_response(status, code, message)
-        body = JSON.generate({ error: { code: code, message: message } })
-        [status, { 'content-type' => 'application/json' }, [body]]
+      def problem(status, error_type, title, detail)
+        {
+          type: "#{URN_PREFIX}:#{error_type}",
+          title: title,
+          status: status,
+          detail: detail
+        }
+      end
+
+      def problem_response(status, body)
+        [status, { 'content-type' => 'application/problem+json' }, [JSON.generate(body)]]
       end
     end
   end
