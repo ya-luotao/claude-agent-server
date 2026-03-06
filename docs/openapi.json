@@ -1,0 +1,773 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Claude Agent Server API",
+    "description": "HTTP server wrapping the Claude Agent Ruby SDK as a REST + SSE API. Exposes Claude Code as a network service with session management, streaming, and authentication.",
+    "version": "0.1.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/ya-luotao/claude-agent-server-ruby/blob/main/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:9292",
+      "description": "Local development"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Health check (no auth)",
+        "security": [],
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "operationId": "getV1Health",
+        "summary": "Health check (versioned, no auth)",
+        "security": [],
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/info": {
+      "get": {
+        "operationId": "getInfo",
+        "summary": "Server info",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Server version and status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InfoResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/query": {
+      "post": {
+        "operationId": "postQuery",
+        "summary": "One-shot query (JSON response)",
+        "tags": ["Query"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Query completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "502": { "$ref": "#/components/responses/CLIError" }
+        }
+      }
+    },
+    "/v1/query/stream": {
+      "post": {
+        "operationId": "postQueryStream",
+        "summary": "One-shot query (SSE stream)",
+        "tags": ["Query"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Newline-delimited SSE events: id, event, data fields"
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "summary": "List active sessions",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": {
+            "description": "Session list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessions": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/SessionInfo" }
+                    }
+                  },
+                  "required": ["sessions"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSession",
+        "summary": "Create interactive session",
+        "tags": ["Sessions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "409": { "$ref": "#/components/responses/SessionAlreadyExists" },
+          "429": { "$ref": "#/components/responses/SessionLimitReached" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "getSession",
+        "summary": "Get session info",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": {
+            "description": "Session info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteSession",
+        "summary": "Disconnect and cleanup session",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": {
+            "description": "Session disconnected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "disconnected" },
+                    "id": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/messages": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "post": {
+        "operationId": "sendMessage",
+        "summary": "Send message to session",
+        "tags": ["Sessions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "sent" },
+                    "sessionId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/messages/stream": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "streamMessages",
+        "summary": "SSE stream of session messages (legacy)",
+        "description": "Prefer /v1/sessions/{sessionId}/events/sse for new integrations.",
+        "tags": ["Sessions"],
+        "parameters": [
+          {
+            "name": "Last-Event-Id",
+            "in": "header",
+            "description": "Resume from this event index",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/events": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "listEvents",
+        "summary": "Poll events by offset",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Event index to start from (default: 0)",
+            "schema": { "type": "integer", "default": 0 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of events to return",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/events/sse": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "streamEvents",
+        "summary": "SSE stream with resume support",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "Last-Event-Id",
+            "in": "header",
+            "description": "Resume from this event index",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE event stream with id fields for resumption",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/interrupt": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "post": {
+        "operationId": "interruptSession",
+        "summary": "Interrupt current turn",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": {
+            "description": "Session interrupted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "interrupted" },
+                    "sessionId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/model": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "post": {
+        "operationId": "switchModel",
+        "summary": "Switch model mid-session",
+        "tags": ["Sessions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchModelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model switched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "model_changed" },
+                    "model": { "type": "string" },
+                    "sessionId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidRequest" },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/mcp-status": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "getMcpStatus",
+        "summary": "Get MCP server status",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": {
+            "description": "MCP status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionId": { "type": "string" },
+                    "mcpStatus": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/history": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "getHistory",
+        "summary": "Get full session event history",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": {
+            "description": "Session history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionId": { "type": "string" },
+                    "messages": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/IndexedEvent" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/SessionNotFound" }
+        }
+      }
+    },
+    "/v1/cli-sessions": {
+      "get": {
+        "operationId": "listCliSessions",
+        "summary": "List past CLI sessions (read-only)",
+        "tags": ["CLI Sessions"],
+        "parameters": [
+          { "name": "directory", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } },
+          { "name": "includeWorktrees", "in": "query", "schema": { "type": "string", "enum": ["true", "false"], "default": "true" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "CLI sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessions": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/CliSessionInfo" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/cli-sessions/{sessionId}/messages": {
+      "parameters": [
+        { "$ref": "#/components/parameters/SessionId" }
+      ],
+      "get": {
+        "operationId": "getCliSessionMessages",
+        "summary": "Get CLI session transcript",
+        "tags": ["CLI Sessions"],
+        "parameters": [
+          { "name": "directory", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessionId": { "type": "string" },
+                    "messages": { "type": "array", "items": { "$ref": "#/components/schemas/CliSessionMessage" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Set via CLAUDE_SERVER_AUTH_TOKEN env var or --token flag"
+      }
+    },
+    "parameters": {
+      "SessionId": {
+        "name": "sessionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" }
+        },
+        "required": ["status"]
+      },
+      "InfoResponse": {
+        "type": "object",
+        "properties": {
+          "version": { "type": "string", "example": "0.1.0" },
+          "sdkVersion": { "type": "string", "example": "0.8.0" },
+          "activeSessions": { "type": "integer", "example": 3 }
+        },
+        "required": ["version", "sdkVersion", "activeSessions"]
+      },
+      "QueryRequest": {
+        "type": "object",
+        "properties": {
+          "prompt": { "type": "string", "description": "The prompt to send" },
+          "options": { "$ref": "#/components/schemas/SdkOptions" }
+        },
+        "required": ["prompt"]
+      },
+      "QueryResponse": {
+        "type": "object",
+        "properties": {
+          "messages": { "type": "array", "items": { "$ref": "#/components/schemas/Message" } }
+        },
+        "required": ["messages"]
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Client-provided session ID (optional, UUID generated if omitted)" },
+          "prompt": { "type": "string", "description": "Initial prompt (optional)" },
+          "options": { "$ref": "#/components/schemas/SdkOptions" }
+        }
+      },
+      "SendMessageRequest": {
+        "type": "object",
+        "properties": {
+          "prompt": { "type": "string" }
+        },
+        "required": ["prompt"]
+      },
+      "SwitchModelRequest": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "example": "claude-sonnet-4-20250514" }
+        },
+        "required": ["model"]
+      },
+      "SessionInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["connected", "finished", "disconnected"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "lastActivity": { "type": "string", "format": "date-time" },
+          "messageCount": { "type": "integer" }
+        },
+        "required": ["id", "status", "createdAt", "lastActivity", "messageCount"]
+      },
+      "EventsResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": { "type": "string" },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/IndexedEvent" } },
+          "nextOffset": { "type": "integer", "description": "Use as offset for the next poll request" }
+        },
+        "required": ["sessionId", "events", "nextOffset"]
+      },
+      "IndexedEvent": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer", "description": "Monotonically increasing event index" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "message": { "$ref": "#/components/schemas/Message" }
+        },
+        "required": ["index", "timestamp", "message"]
+      },
+      "Message": {
+        "type": "object",
+        "description": "A serialized SDK message. The 'type' field determines the shape.",
+        "properties": {
+          "type": { "type": "string", "enum": ["user", "assistant", "system", "result", "stream_event", "rate_limit_event", "unknown"] }
+        },
+        "required": ["type"]
+      },
+      "SdkOptions": {
+        "type": "object",
+        "description": "Options passed to ClaudeAgentSDK (camelCase keys)",
+        "properties": {
+          "model": { "type": "string" },
+          "maxTurns": { "type": "integer" },
+          "maxBudgetUsd": { "type": "number" },
+          "allowedTools": { "type": "array", "items": { "type": "string" } },
+          "disallowedTools": { "type": "array", "items": { "type": "string" } },
+          "systemPrompt": { "type": "string" },
+          "permissionMode": { "type": "string", "enum": ["default", "acceptEdits", "plan", "bypassPermissions"] },
+          "cwd": { "type": "string" },
+          "effort": { "type": "string" }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "description": "RFC 9457 Problem Details",
+        "properties": {
+          "type": { "type": "string", "format": "uri", "example": "urn:claude-agent-server:error:session_not_found" },
+          "title": { "type": "string", "example": "Session Not Found" },
+          "status": { "type": "integer", "example": 404 },
+          "detail": { "type": "string", "example": "Session 'abc-123' not found" }
+        },
+        "required": ["type", "title", "status"]
+      },
+      "CliSessionInfo": {
+        "type": "object",
+        "properties": {
+          "sessionId": { "type": "string" },
+          "summary": { "type": "string" },
+          "lastModified": { "type": "integer" },
+          "fileSize": { "type": "integer" },
+          "customTitle": { "type": "string" },
+          "firstPrompt": { "type": "string" },
+          "gitBranch": { "type": "string" },
+          "cwd": { "type": "string" }
+        },
+        "required": ["sessionId", "summary", "lastModified", "fileSize"]
+      },
+      "CliSessionMessage": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string" },
+          "uuid": { "type": "string" },
+          "sessionId": { "type": "string" },
+          "message": { "type": "object" },
+          "parentToolUseId": { "type": "string" }
+        },
+        "required": ["type", "uuid", "sessionId", "message"]
+      }
+    },
+    "responses": {
+      "InvalidRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
+      },
+      "SessionNotFound": {
+        "description": "Session not found",
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
+      },
+      "SessionAlreadyExists": {
+        "description": "Session already exists (duplicate client-provided ID)",
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
+      },
+      "SessionLimitReached": {
+        "description": "Maximum session limit reached",
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
+      },
+      "CLIError": {
+        "description": "Claude CLI error",
+        "content": {
+          "application/problem+json": {
+            "schema": { "$ref": "#/components/schemas/ProblemDetails" }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Health", "description": "Server health and info" },
+    { "name": "Query", "description": "One-shot queries" },
+    { "name": "Sessions", "description": "Interactive session management" },
+    { "name": "Events", "description": "Event polling and streaming" },
+    { "name": "CLI Sessions", "description": "Browse past Claude CLI sessions (read-only)" }
+  ]
+}

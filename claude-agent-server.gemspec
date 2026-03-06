@@ -21,7 +21,7 @@ Gem::Specification.new do |spec|
   spec.metadata['changelog_uri'] = 'https://github.com/ya-luotao/claude-agent-server-ruby/blob/main/CHANGELOG.md'
   spec.metadata['rubygems_mfa_required'] = 'true'
 
-  spec.files = Dir['lib/**/*', 'exe/*', 'README.md', 'LICENSE', 'CHANGELOG.md', 'config.ru']
+  spec.files = Dir['lib/**/*', 'exe/*', 'docs/**/*', 'README.md', 'LICENSE', 'CHANGELOG.md', 'config.ru']
   spec.bindir = 'exe'
   spec.executables = ['claude-agent-server']
   spec.require_paths = ['lib']

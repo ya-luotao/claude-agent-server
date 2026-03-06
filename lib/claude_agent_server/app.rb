@@ -37,6 +37,15 @@ module ClaudeAgentServer
           end
         end
 
+        # GET /v1/openapi.json
+        r.on 'openapi.json' do
+          r.get do
+            spec_path = File.expand_path('../../docs/openapi.json', __dir__)
+            response['content-type'] = 'application/json'
+            File.read(spec_path)
+          end
+        end
+
         # GET /v1/info
         r.on 'info' do
           r.get do
