@@ -7,4 +7,7 @@ ClaudeAgentServer.configure do |config|
   # Override defaults here if needed
 end
 
+# Start the session reaper so expired/finished sessions are cleaned up
+ClaudeAgentServer::App.session_manager.start_reaper
+
 run ClaudeAgentServer.app

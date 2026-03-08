@@ -50,10 +50,11 @@ module ClaudeAgentServer
       def subscribe(offset: 0, &block)
         queue = Async::Queue.new
 
-        # Replay missed events from offset
+        # Replay missed events from offset, and send :done immediately if already finished
         @mutex.synchronize do
           @subscribers << queue
           @events[offset..]&.each { |evt| queue.enqueue(evt) }
+          queue.enqueue(:done) if @status == :finished || @status == :disconnected
         end
 
         begin
@@ -90,7 +91,6 @@ module ClaudeAgentServer
           Async do
             client.receive_messages do |message|
               broadcast(message)
-              break if message.is_a?(ClaudeAgentSDK::ResultMessage)
             end
           rescue StandardError
             # Reader ended (disconnect or error)
@@ -121,29 +121,29 @@ module ClaudeAgentServer
       end
 
       def create_session(options:, prompt: nil, id: nil)
-        config = ClaudeAgentServer.config
         id ||= SecureRandom.uuid
+        reserve_slot(id)
 
-        @mutex.synchronize do
-          raise SessionAlreadyExistsError, "Session '#{id}' already exists" if @sessions.key?(id)
+        begin
+          client = ClaudeAgentSDK::Client.new(options: options)
+          client.connect(prompt)
 
-          if @sessions.size >= config.max_sessions
-            raise SessionLimitError, "Maximum session limit (#{config.max_sessions}) reached"
-          end
+          entry = SessionEntry.new(id: id, client: client)
+          @mutex.synchronize { @sessions[id] = entry }
+
+          entry.start_message_reader
+          entry
+        rescue StandardError
+          @mutex.synchronize { @sessions.delete(id) }
+          raise
         end
-
-        client = ClaudeAgentSDK::Client.new(options: options)
-        client.connect(prompt)
-
-        entry = SessionEntry.new(id: id, client: client)
-        @mutex.synchronize { @sessions[id] = entry }
-
-        entry.start_message_reader
-        entry
       end
 
       def get_session(id)
-        @mutex.synchronize { @sessions[id] } || raise(SessionNotFoundError, "Session '#{id}' not found")
+        entry = @mutex.synchronize { @sessions[id] }
+        raise SessionNotFoundError, "Session '#{id}' not found" unless entry.is_a?(SessionEntry)
+
+        entry
       end
 
       def destroy_session(id)
@@ -155,43 +155,67 @@ module ClaudeAgentServer
       end
 
       def list_sessions
-        @mutex.synchronize { @sessions.values.dup }
+        @mutex.synchronize { @sessions.values.grep(SessionEntry) }
       end
 
       def start_reaper
-        @reaper_task = Async do |task|
+        return if @reaper_task&.alive?
+
+        @reaper_task = Thread.new do
           loop do
-            task.sleep(60)
+            sleep(60)
             reap_expired_sessions
+          rescue StandardError
+            # Don't crash the reaper on transient errors
           end
         end
+        @reaper_task.name = 'session-reaper'
       end
 
       def stop_reaper
-        @reaper_task&.stop
+        @reaper_task&.kill
+        @reaper_task = nil
       end
 
       def shutdown
         stop_reaper
         @mutex.synchronize do
-          @sessions.each_value(&:disconnect)
+          @sessions.each_value { |v| v.disconnect if v.is_a?(SessionEntry) }
           @sessions.clear
         end
       end
 
       private
 
+      def reserve_slot(id)
+        config = ClaudeAgentServer.config
+
+        @mutex.synchronize do
+          raise SessionAlreadyExistsError, "Session '#{id}' already exists" if @sessions.key?(id)
+
+          if @sessions.size >= config.max_sessions
+            raise SessionLimitError, "Maximum session limit (#{config.max_sessions}) reached"
+          end
+
+          @sessions[id] = :reserved
+        end
+      end
+
+      def session_expired?(entry, now, ttl)
+        entry.status == :finished || (now - entry.last_activity > ttl)
+      end
+
       def reap_expired_sessions
         ttl = ClaudeAgentServer.config.session_ttl
         now = Time.now
 
         expired_ids = @mutex.synchronize do
-          @sessions.select { |_, entry| now - entry.last_activity > ttl }.keys
+          @sessions.select { |_, e| e.is_a?(SessionEntry) && session_expired?(e, now, ttl) }.keys
         end
 
         expired_ids.each do |id|
           entry = @mutex.synchronize { @sessions.delete(id) }
-          entry&.disconnect
+          entry&.disconnect if entry.is_a?(SessionEntry)
         end
       end
     end

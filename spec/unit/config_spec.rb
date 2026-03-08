@@ -5,7 +5,7 @@ RSpec.describe ClaudeAgentServer::Config do
 
   describe 'defaults' do
     it 'has default host' do
-      expect(config.host).to eq('0.0.0.0')
+      expect(config.host).to eq('127.0.0.1')
     end
 
     it 'has default port' do

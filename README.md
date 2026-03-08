@@ -27,27 +27,27 @@ gem 'claude-agent-server'
 claude-agent-server --port 9292
 
 # One-shot query
-curl -X POST http://localhost:9292/query \
+curl -X POST http://localhost:9292/v1/query \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"Say hello"}'
 
 # Streaming query (SSE)
-curl -N -X POST http://localhost:9292/query/stream \
+curl -N -X POST http://localhost:9292/v1/query/stream \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"Say hello"}'
 
 # Interactive session
-curl -X POST http://localhost:9292/sessions \
+curl -X POST http://localhost:9292/v1/sessions \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"Hello"}'
 
 # Send message to session
-curl -X POST http://localhost:9292/sessions/<id>/messages \
+curl -X POST http://localhost:9292/v1/sessions/<id>/messages \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"What is 2+2?"}'
 
 # Stream session messages (SSE)
-curl -N http://localhost:9292/sessions/<id>/messages/stream
+curl -N http://localhost:9292/v1/sessions/<id>/messages/stream
 ```
 
 ## Configuration
@@ -56,7 +56,7 @@ curl -N http://localhost:9292/sessions/<id>/messages/stream
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLAUDE_SERVER_HOST` | `0.0.0.0` | Bind address |
+| `CLAUDE_SERVER_HOST` | `127.0.0.1` | Bind address |
 | `CLAUDE_SERVER_PORT` | `9292` | Listen port |
 | `CLAUDE_SERVER_AUTH_TOKEN` | (none) | Bearer token for authentication |
 | `CLAUDE_SERVER_CORS_ORIGINS` | `*` | Comma-separated allowed origins |
@@ -69,7 +69,7 @@ curl -N http://localhost:9292/sessions/<id>/messages/stream
 ```
 Usage: claude-agent-server [options]
     -p, --port PORT          Port to listen on (default: 9292)
-    -b, --bind HOST          Host to bind to (default: 0.0.0.0)
+    -b, --bind HOST          Host to bind to (default: 127.0.0.1)
     -t, --token TOKEN        Authentication token
         --session-ttl SECONDS Session TTL in seconds (default: 3600)
         --max-sessions N     Maximum concurrent sessions (default: 100)
@@ -98,15 +98,15 @@ run ClaudeAgentServer.app
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/health` | No | Health check |
-| GET | `/info` | Yes | Server version, SDK version, active sessions |
+| GET | `/health` | No | Health check (also available at `/v1/health`) |
+| GET | `/v1/info` | Yes | Server version, SDK version, active sessions |
 
 ### One-Shot Query
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/query` | Yes | Execute query, return JSON array of messages |
-| POST | `/query/stream` | Yes | Execute query, return SSE stream |
+| POST | `/v1/query` | Yes | Execute query, return JSON array of messages |
+| POST | `/v1/query/stream` | Yes | Execute query, return SSE stream |
 
 **Request body:**
 ```json
@@ -124,23 +124,25 @@ run ClaudeAgentServer.app
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/sessions` | Yes | List active sessions |
-| POST | `/sessions` | Yes | Create session (optionally with initial prompt) |
-| GET | `/sessions/:id` | Yes | Get session info |
-| DELETE | `/sessions/:id` | Yes | Disconnect and cleanup |
-| POST | `/sessions/:id/messages` | Yes | Send message to session |
-| GET | `/sessions/:id/messages/stream` | Yes | SSE stream of session messages |
-| POST | `/sessions/:id/interrupt` | Yes | Interrupt current turn |
-| POST | `/sessions/:id/model` | Yes | Switch model mid-session |
-| GET | `/sessions/:id/mcp-status` | Yes | Get MCP server status |
-| GET | `/sessions/:id/history` | Yes | Get session transcript |
+| GET | `/v1/sessions` | Yes | List active sessions |
+| POST | `/v1/sessions` | Yes | Create session (optionally with initial prompt) |
+| GET | `/v1/sessions/:id` | Yes | Get session info |
+| DELETE | `/v1/sessions/:id` | Yes | Disconnect and cleanup |
+| POST | `/v1/sessions/:id/messages` | Yes | Send message to session |
+| GET | `/v1/sessions/:id/messages/stream` | Yes | SSE stream of session messages |
+| GET | `/v1/sessions/:id/events` | Yes | Offset-based event polling |
+| GET | `/v1/sessions/:id/events/sse` | Yes | SSE stream with resume via `Last-Event-ID` |
+| POST | `/v1/sessions/:id/interrupt` | Yes | Interrupt current turn |
+| POST | `/v1/sessions/:id/model` | Yes | Switch model mid-session |
+| GET | `/v1/sessions/:id/mcp-status` | Yes | Get MCP server status |
+| GET | `/v1/sessions/:id/history` | Yes | Get session transcript |
 
 ### CLI Session Browsing
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/cli-sessions` | Yes | List past CLI sessions (read-only) |
-| GET | `/cli-sessions/:id/messages` | Yes | Get session transcript |
+| GET | `/v1/cli-sessions` | Yes | List past CLI sessions (read-only) |
+| GET | `/v1/cli-sessions/:id/messages` | Yes | Get session transcript |
 
 ## SSE Event Format
 
@@ -160,29 +162,30 @@ data: {"status":"complete"}
 When `CLAUDE_SERVER_AUTH_TOKEN` is set, all routes except `/health` require a Bearer token:
 
 ```bash
-curl -H 'Authorization: Bearer your-token' http://localhost:9292/info
+curl -H 'Authorization: Bearer your-token' http://localhost:9292/v1/info
 ```
 
 Uses timing-safe comparison to prevent timing attacks.
 
 ## Error Responses
 
-All errors return JSON:
+All errors return [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details JSON (`application/problem+json`):
 
 ```json
 {
-  "error": {
-    "code": "session_not_found",
-    "message": "Session 'abc-123' not found"
-  }
+  "type": "urn:claude-agent-server:error:session_not_found",
+  "title": "Session Not Found",
+  "status": 404,
+  "detail": "Session 'abc-123' not found"
 }
 ```
 
-| HTTP Status | Code | Description |
-|-------------|------|-------------|
-| 400 | `bad_request` | Invalid input |
+| HTTP Status | Error Type | Description |
+|-------------|------------|-------------|
+| 400 | `invalid_request` | Invalid input |
 | 401 | `unauthorized` | Missing or invalid auth token |
 | 404 | `session_not_found` | Session does not exist |
+| 409 | `session_already_exists` | Duplicate session ID |
 | 429 | `session_limit_reached` | Max sessions exceeded |
 | 502 | `cli_connection_error` | Claude CLI failed |
 | 503 | `cli_not_found` | Claude CLI not installed |

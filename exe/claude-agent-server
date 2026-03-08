@@ -62,10 +62,18 @@ puts "Listening on http://#{config.host}:#{config.port}"
 puts "Auth: #{config.auth_enabled? ? 'enabled' : 'disabled'}"
 puts "Max sessions: #{config.max_sessions}, TTL: #{config.session_ttl}s"
 
+unless config.auth_enabled?
+  warn '[WARNING] Server running without authentication. Set CLAUDE_SERVER_AUTH_TOKEN or use --token.'
+end
+
+if config.host == '0.0.0.0'
+  warn '[WARNING] Server binding to all interfaces (0.0.0.0). Use 127.0.0.1 for local-only access.'
+end
+
 # Use array form to avoid shell injection
 Kernel.exec(
   'falcon', 'serve',
   '--bind', "http://#{config.host}:#{config.port}",
   '--count', '1',
-  '--config', File.expand_path('../../config.ru', __dir__)
+  '--config', File.expand_path('../config.ru', __dir__)
 )

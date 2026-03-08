@@ -6,7 +6,7 @@ module ClaudeAgentServer
                   :max_sessions, :default_sdk_options, :log_level
 
     def initialize
-      @host = ENV.fetch('CLAUDE_SERVER_HOST', '0.0.0.0')
+      @host = ENV.fetch('CLAUDE_SERVER_HOST', '127.0.0.1')
       @port = ENV.fetch('CLAUDE_SERVER_PORT', '9292').to_i
       @auth_token = ENV.fetch('CLAUDE_SERVER_AUTH_TOKEN', nil)
       @cors_origins = ENV.fetch('CLAUDE_SERVER_CORS_ORIGINS', '*')

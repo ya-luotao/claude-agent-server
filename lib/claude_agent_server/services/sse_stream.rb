@@ -19,6 +19,8 @@ module ClaudeAgentServer
           stream.write(format_sse('done', { status: 'complete' }))
         rescue IOError, Errno::EPIPE
           # Client disconnected — exit cleanly
+        rescue StandardError => e
+          stream.write(format_sse('error', { type: 'error', detail: e.message }))
         end
       end
 
@@ -34,6 +36,8 @@ module ClaudeAgentServer
           stream.write(format_sse('done', { status: 'complete' }))
         rescue IOError, Errno::EPIPE
           # Client disconnected — session stays alive
+        rescue StandardError => e
+          stream.write(format_sse('error', { type: 'error', detail: e.message }))
         end
       end
 

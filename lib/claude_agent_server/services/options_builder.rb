@@ -44,8 +44,8 @@ module ClaudeAgentServer
         defaults = ClaudeAgentServer.config.default_sdk_options
         merged = defaults.merge(kwargs)
 
-        # Force bypassPermissions for HTTP usage (no interactive terminal)
-        merged[:permission_mode] ||= 'bypassPermissions'
+        # Default to acceptEdits for headless HTTP usage (safer than bypassPermissions)
+        merged[:permission_mode] ||= 'acceptEdits'
 
         ClaudeAgentSDK::ClaudeAgentOptions.new(**merged)
       end

@@ -265,7 +265,7 @@ module ClaudeAgentServer
             r.on 'history' do
               r.get do
                 entry = manager.get_session(session_id)
-                events = entry.events
+                events = entry.get_events
                 json_response({
                                 sessionId: session_id,
                                 messages: events.map { |e| serialize_event(e) }

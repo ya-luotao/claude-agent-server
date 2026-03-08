@@ -9,10 +9,10 @@ RSpec.describe ClaudeAgentServer::Services::OptionsBuilder do
       expect(options.max_turns).to eq(5)
     end
 
-    it 'defaults permission_mode to bypassPermissions' do
+    it 'defaults permission_mode to acceptEdits' do
       options = described_class.build({})
 
-      expect(options.permission_mode).to eq('bypassPermissions')
+      expect(options.permission_mode).to eq('acceptEdits')
     end
 
     it 'preserves explicitly set permission_mode' do
